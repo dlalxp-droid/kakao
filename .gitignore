@@ -1,0 +1,9 @@
+automation/credentials.json
+automation/sent-log.txt
+automation/run.log
+automation/*.png
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
