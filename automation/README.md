@@ -26,7 +26,7 @@ Start-ScheduledTask -TaskName "BocareKakaoAutoSend"
 - Python 3.10+ (PATH 등록 필수)
 - 카카오톡 PC 설치 및 본인 계정 로그인 가능 상태
 - 보케어톡 PC 프로그램 설치 및 항상 실행 상태
-- bocare.co.kr 유료 계정
+- bocare.co.kr 유료 계정 (**카카오 간편로그인** 사용 가정 — bocare에 카카오 계정으로 연결돼 있어야 함)
 - Anthropic API 키 (https://console.anthropic.com/settings/keys)
 
 ## 파일 구조
@@ -87,7 +87,8 @@ Get-Content .\sent-log.txt -Tail 10     # 발송 이력
    - 화면을 캡처해 노란 TALK 로고 색상 (RGB ≈ 254,229,0) 무게중심 탐색
    - 그 아래쪽 좌표를 비밀번호 박스로 추정해 클릭 → 비밀번호 입력 → Enter
 4. Playwright Chromium으로 bocare.co.kr 자동화
-   - 로그인 → 카톡 발송 페이지 (`#step/1`)
+   - "카카오로 로그인" 버튼 클릭 → 카카오 OAuth 팝업에서 `kakao_id`/`kakao_pw` 입력 → 동의 화면 자동 통과
+   - 카톡 발송 페이지 (`#step/1`)
    - 그룹 선택 (`customer_group_value`)
    - 마스터 체크박스 (전체 선택) → 발송대상추가 → 다음
    - 메시지 입력 (`textarea#honorifics` + `dispatchEvent` 사이트 state sync)

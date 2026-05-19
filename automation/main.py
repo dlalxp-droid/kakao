@@ -46,7 +46,6 @@ log = logging.getLogger("kakao-auto")
 # ---------- config ----------
 
 REQUIRED_FIELDS = [
-    "bocare_id", "bocare_pw",
     "kakao_id", "kakao_pw",
     "anthropic_api_key",
     "user_signature_start", "user_signature_end_name", "user_phone",
@@ -286,11 +285,84 @@ def bocare_send(cfg: dict, message: str) -> int:
         page = ctx.new_page()
         page.set_default_timeout(30_000)
 
-        # 1) 로그인
+        # 1) 로그인 — 카카오 간편로그인 사용
         page.goto(BOCARE_LOGIN_URL)
-        page.fill('input[type="email"]', cfg["bocare_id"])
-        page.fill('input[type="Password"], input[type="password"]', cfg["bocare_pw"])
-        page.click('button:has-text("로그인")')
+        page.wait_for_load_state("networkidle")
+
+        kakao_btn_selectors = [
+            'a:has-text("카카오로 로그인")',
+            'button:has-text("카카오로 로그인")',
+            'a:has-text("카카오")',
+            'button:has-text("카카오")',
+            'img[alt*="카카오"]',
+            '.kakao-login, .btn-kakao, .login-kakao',
+        ]
+
+        popup = None
+        try:
+            with ctx.expect_page(timeout=8000) as popup_info:
+                for sel in kakao_btn_selectors:
+                    try:
+                        page.click(sel, timeout=2000)
+                        break
+                    except Exception:
+                        continue
+            popup = popup_info.value
+            log.info("카카오 로그인 팝업 감지됨")
+        except Exception:
+            log.info("팝업 안 뜸 — 같은 창에서 카카오 OAuth로 리디렉션된 것으로 가정")
+
+        auth_page = popup if popup is not None else page
+        auth_page.wait_for_load_state("domcontentloaded")
+        time.sleep(1)
+
+        # 카카오 OAuth 페이지에서 ID/PW 입력
+        for sel in ['input[name="loginId"]', 'input#loginId--1',
+                    'input[name="email"]', 'input[type="email"]',
+                    'input[name="loginKey"]']:
+            try:
+                auth_page.fill(sel, cfg["kakao_id"], timeout=2500)
+                break
+            except Exception:
+                continue
+        for sel in ['input[name="password"]', 'input#password--2',
+                    'input[type="password"]']:
+            try:
+                auth_page.fill(sel, cfg["kakao_pw"], timeout=2500)
+                break
+            except Exception:
+                continue
+        for sel in ['button.btn_g.highlight.submit',
+                    'button[type="submit"]:has-text("로그인")',
+                    'button:has-text("로그인")']:
+            try:
+                auth_page.click(sel, timeout=2500)
+                break
+            except Exception:
+                continue
+        log.info("카카오 OAuth 로그인 제출")
+
+        # 동의 화면이 나오면 "전체 동의 후 계속하기" 또는 "동의하고 계속하기" 클릭
+        try:
+            for sel in ['button:has-text("전체 동의")',
+                        'button:has-text("동의하고 계속")',
+                        'button:has-text("계속하기")']:
+                try:
+                    auth_page.click(sel, timeout=2500)
+                    log.info(f"동의 화면 통과: {sel}")
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # 팝업이었으면 닫힐 때까지 대기
+        if popup is not None:
+            try:
+                popup.wait_for_event("close", timeout=15000)
+            except Exception:
+                pass
+
         page.wait_for_load_state("networkidle")
         log.info("bocare 로그인 완료")
 
