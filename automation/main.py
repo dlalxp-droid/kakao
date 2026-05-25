@@ -21,10 +21,10 @@ import os
 import sys
 import time
 import traceback
+import unicodedata
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-CRED_PATH = HERE / "credentials.json"
 PROMPT_PATH = HERE / "daily-message-prompt.md"
 LOG_PATH = HERE / "run.log"
 SENT_LOG_PATH = HERE / "sent-log.txt"
@@ -53,12 +53,53 @@ REQUIRED_FIELDS = [
 ]
 
 
+def _resolve_credentials() -> Path:
+    """credentials.json 위치를 견고하게 탐색.
+
+    한글 경로의 NFC/NFD 정규화 불일치, 대소문자, 메모장이 자동으로
+    붙이는 .txt 확장자까지 흡수한다. main.py 옆 디렉토리와 현재 작업
+    디렉토리를 모두 뒤진다. 못 찾으면 실제 파일 목록을 보여준다.
+    """
+    search_dirs: list[Path] = []
+    for d in (HERE, Path.cwd()):
+        if d not in search_dirs:
+            search_dirs.append(d)
+
+    for d in search_dirs:
+        p = d / "credentials.json"
+        if p.exists():
+            return p
+
+    def norm(name: str) -> str:
+        return unicodedata.normalize("NFC", name).lower()
+
+    wanted = {"credentials.json", "credentials.json.txt"}
+    for d in search_dirs:
+        try:
+            for entry in os.scandir(d):
+                if entry.is_file() and norm(entry.name) in wanted:
+                    return Path(entry.path)
+        except OSError:
+            continue
+
+    listing = []
+    for d in search_dirs:
+        try:
+            names = sorted(p.name for p in d.iterdir())
+        except OSError:
+            names = ["(목록 읽기 실패)"]
+        listing.append(f"  {d}:\n    " + "\n    ".join(names))
+    raise SystemExit(
+        "credentials.json을 찾을 수 없습니다. credentials.json.template을 "
+        "복사해 채워주세요.\n탐색한 디렉토리와 실제 파일 목록:\n"
+        + "\n".join(listing)
+    )
+
+
 def load_config() -> dict:
-    if not CRED_PATH.exists():
-        raise SystemExit(
-            f"credentials.json 없음. credentials.json.template을 복사 후 채워주세요. ({CRED_PATH})"
-        )
-    cfg = json.loads(CRED_PATH.read_text(encoding="utf-8"))
+    cred_path = _resolve_credentials()
+    # utf-8-sig: 메모장이 UTF-8로 저장할 때 붙이는 BOM을 흡수
+    cfg = json.loads(cred_path.read_text(encoding="utf-8-sig"))
     missing = []
     for f in REQUIRED_FIELDS:
         v = cfg.get(f)
@@ -97,7 +138,7 @@ def generate_message(cfg: dict) -> str:
     from anthropic import APIError, APIStatusError
 
     client = Anthropic(api_key=cfg["anthropic_api_key"])
-    system_prompt = PROMPT_PATH.read_text(encoding="utf-8")
+    system_prompt = PROMPT_PATH.read_text(encoding="utf-8-sig")
 
     today = dt.date.today()
     weekday_kr = "월화수목금토일"[today.weekday()]
